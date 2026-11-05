@@ -119,6 +119,26 @@ private:
         Node* next;
     };
 
+   void unlink(Node* n) {
+    if (n->prev) {
+        n->prev->next = n->next; 
+        // ___ : the previous node's next skips over n
+    } else {
+        head_ = n->next;
+        // ___ : n was the head, so head_ moves to n's next
+    }
+
+    if (n->next) {
+          n->next->prev = n->prev;
+        // ___ : the next node's prev skips over n
+    } else {
+        tail_ = n->prev; 
+        // ___ : n was the tail, so tail_ moves to n's prev
+    }
+
+    n->prev = nullptr;
+    n->next = nullptr;
+}
     // ===== YOUR HELPERS AND MEMBERS =====
     // Suggested helpers: unlink(Node*), push_front(Node*), move_to_front(Node*).
     // Clue for unlink(n): four cases. If n has a prev, prev->next skips n,

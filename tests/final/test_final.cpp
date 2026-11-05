@@ -43,30 +43,39 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <random>
+#include <algorithm>
+#include <functional>
+#include <chrono>
+#include <cstdio>
 
 // =========================================================================
 // Memory — 4 examples
 // =========================================================================
 
 // Example 1 (heap): items come back smallest first, duplicates included.
-TEST(heap_pops_in_order) {
+TEST(heap_pops_in_order)
+{
     MinHeap<int> h;
-    for (int x : {5, 1, 4, 1, 3}) h.push(x);
+    for (int x : {5, 1, 4, 1, 3})
+        h.push(x);
     CHECK_EQ(h.size(), std::size_t{5});
     CHECK_EQ(h.top(), 1);
     std::vector<int> got;
-    while (!h.empty()) got.push_back(h.pop());
+    while (!h.empty())
+        got.push_back(h.pop());
     CHECK_EQ(got, (std::vector<int>{1, 1, 3, 4, 5}));
 }
 
 // Example 2 (lru): the least recently USED entry is evicted, and get()
 // counts as a use.
-TEST(lru_evicts_least_recently_used) {
+TEST(lru_evicts_least_recently_used)
+{
     LruCache<std::string, int> c(2);
     c.put("a", 1);
     c.put("b", 2);
-    REQUIRE(c.get("a") != nullptr);   // "a" is now the most recent
-    c.put("c", 3);                    // full: "b" must go
+    REQUIRE(c.get("a") != nullptr); // "a" is now the most recent
+    c.put("c", 3);                  // full: "b" must go
     CHECK(c.contains("a"));
     CHECK(!c.contains("b"));
     CHECK_EQ(c.keys_mru_to_lru(), (std::vector<std::string>{"c", "a"}));
@@ -75,12 +84,15 @@ TEST(lru_evicts_least_recently_used) {
 
 // Example 3 (bst): removing a node with two children keeps the tree sorted,
 // keeps every other record, and lowers size() by exactly one.
-TEST(bst_remove_two_children) {
+TEST(bst_remove_two_children)
+{
     MemoryIndex t;
-    for (std::uint64_t id : {50, 30, 70, 60, 80}) REQUIRE(t.insert(MemoryRecord{id, "m" + std::to_string(id)}));
+    for (std::uint64_t id : {50, 30, 70, 60, 80})
+        REQUIRE(t.insert(MemoryRecord{id, "m" + std::to_string(id)}));
     REQUIRE(t.remove(70));
     std::vector<std::uint64_t> ids;
-    t.for_each_in_order([&](const MemoryRecord& r) { ids.push_back(r.id); });
+    t.for_each_in_order([&](const MemoryRecord &r)
+                        { ids.push_back(r.id); });
     CHECK_EQ(ids, (std::vector<std::uint64_t>{30, 50, 60, 80}));
     CHECK(t.find(70) == nullptr);
     REQUIRE(t.find(80) != nullptr);
@@ -89,7 +101,8 @@ TEST(bst_remove_two_children) {
 }
 
 // Example 4 (ctx): the worked example in spec §4.4.
-TEST(ctx_spec_example) {
+TEST(ctx_spec_example)
+{
     std::vector<ContextItem> items{
         {Role::System, 10, false},     // 0  protected
         {Role::User, 10, false},       // 1
@@ -105,30 +118,127 @@ TEST(ctx_spec_example) {
     CHECK(!p.over_budget);
 }
 
+// MY MEMORY TESTS
+
+TEST(heap_empty_throws)
+{
+    MinHeap<int> h;
+    CHECK(h.empty());
+    CHECK_THROWS(h.top(), std::out_of_range);
+    h.push(3);
+    CHECK_EQ(h.pop(), 3);
+    CHECK(h.empty());
+    CHECK_THROWS(h.pop(), std::out_of_range);
+}
+
+TEST(heap_custom_comparator)
+{
+    MinHeap<int, std::greater<int>> h;
+    for (int x : {12, 8, 9, 5, 4, 1, 0, 3, 7, 10, 11, 7, 2, 6})
+    {
+        h.push(x);
+    }
+    CHECK_EQ(h.top(), 12);
+    std::vector<int> test;
+    while (!h.empty())
+    {
+        test.push_back(h.pop());
+    }
+    CHECK_EQ(test, (std::vector<int>{12, 11, 10, 9, 8, 7, 7, 6, 5, 4, 3, 2, 1, 0}));
+}
+
+TEST(heap_topk_edge_cases)
+{
+    std::vector<int> r0 = top_k(std::vector<int>{3, 1, 2}, 0);
+    CHECK(r0.empty());
+    std::vector<int> r1 = top_k(std::vector<int>{}, 3);
+    CHECK(r1.empty());
+    std::vector<int> r3 = top_k(std::vector<int>{4, 8}, 5);
+    CHECK_EQ(r3, (std::vector<int>{8, 4}));
+    std::vector<int> r4 = top_k(std::vector<int>{4, 8, 1}, 3);
+    CHECK_EQ(r4, (std::vector<int>{8, 4, 1}));
+    std::vector<int> r5 = top_k(std::vector<int>{5, 1, 9, 3, 7}, 2);
+    CHECK_EQ(r5, (std::vector<int>{9, 7}));
+}
+
+TEST(heap_topk_matches_sort)
+{
+    std::mt19937 rng(42);
+    std::uniform_int_distribution<int> value(0, 20);
+    std::uniform_int_distribution<int> length(0, 50);
+
+    for (int trial = 0; trial < 200; trial++)
+    {
+        std::vector<int> v;
+        int n = length(rng);
+        for (int i = 0; i < n; i++)
+            v.push_back(value(rng));
+
+        for (std::size_t k : {0, 1, 2, 5, 10, 60})
+        {
+            std::vector<int> got = top_k(v, k);
+
+            std::vector<int> expected = v;
+            std::sort(expected.begin(), expected.end(), std::greater<int>());
+            if (expected.size() > k)
+                expected.resize(k);
+            CHECK_EQ(got, expected);
+        }
+    }
+}
+
+TEST(heap_topk_timing)
+{
+    std::mt19937 rng(7);
+    std::uniform_int_distribution<int> value(0, 1000000000);
+    std::vector<int> v;
+    // YOUR LINE: a for loop that push_backs 100000 values from value(rng)
+    for (int i = 0; i < 100000; i++)
+    {
+        v.push_back(value(rng));
+    }
+    auto t0 = std::chrono::steady_clock::now();
+    std::vector<int> got = top_k(v, 10);
+    auto t1 = std::chrono::steady_clock::now();
+    double ms_topk = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    std::vector<int> sorted = v;
+    t0 = std::chrono::steady_clock::now();
+    std::sort(sorted.begin(), sorted.end(), std::greater<int>());
+    t1 = std::chrono::steady_clock::now();
+    double ms_sort = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    std::printf("top_k(k=10) on 100000: %.3f ms\n", ms_topk);
+    std::printf("std::sort on 100000:    %.3f ms\n", ms_sort);
+    sorted.resize(10);
+    CHECK_EQ(got, sorted);
+}
 // =========================================================================
 // Policy — 2 examples
 // =========================================================================
 
 // Example 5 (pol): the sliding window. A request exactly `window` seconds
 // after an allowed one no longer counts it.
-TEST(pol_rate_limit_window_boundary) {
+TEST(pol_rate_limit_window_boundary)
+{
     ManualClock clock(100);
-    RateLimitPolicy p(2, 10.0, clock);   // at most 2 per 10 s
+    RateLimitPolicy p(2, 10.0, clock); // at most 2 per 10 s
     CommandRequest req;
     req.program = "ls";
-    CHECK(p.evaluate(req).kind == Decision::Kind::Allow);   // t = 100
+    CHECK(p.evaluate(req).kind == Decision::Kind::Allow); // t = 100
     clock.advance(1);
-    CHECK(p.evaluate(req).kind == Decision::Kind::Allow);   // t = 101
+    CHECK(p.evaluate(req).kind == Decision::Kind::Allow); // t = 101
     clock.advance(1);
-    CHECK(p.evaluate(req).kind == Decision::Kind::Deny);    // t = 102: two in the window
+    CHECK(p.evaluate(req).kind == Decision::Kind::Deny); // t = 102: two in the window
     clock.advance(8);
-    CHECK(p.evaluate(req).kind == Decision::Kind::Allow);   // t = 110: 100 has left (110 - 100 = 10)
+    CHECK(p.evaluate(req).kind == Decision::Kind::Allow); // t = 110: 100 has left (110 - 100 = 10)
     CHECK(p.tracked() <= 2u);
 }
 
 // Example 6 (pol): first Deny wins and later policies are not asked; with no
 // Deny, the FIRST Ask is returned unchanged.
-TEST(pol_chain_first_deny_stops_first_ask_wins) {
+TEST(pol_chain_first_deny_stops_first_ask_wins)
+{
     auto ask1 = std::make_unique<FixedPolicy>(Decision::Kind::Ask, "ask1");
     auto ask2 = std::make_unique<FixedPolicy>(Decision::Kind::Ask, "ask2");
     PolicyChain chain;
@@ -143,13 +253,13 @@ TEST(pol_chain_first_deny_stops_first_ask_wins) {
 
     auto deny = std::make_unique<FixedPolicy>(Decision::Kind::Deny, "no");
     auto after = std::make_unique<FixedPolicy>(Decision::Kind::Allow, "after");
-    FixedPolicy* after_ptr = after.get();   // still valid: the chain owns it now
+    FixedPolicy *after_ptr = after.get(); // still valid: the chain owns it now
     REQUIRE(chain.add(std::move(deny)));
     REQUIRE(chain.add(std::move(after)));
     d = chain.evaluate(req);
     CHECK(d.kind == Decision::Kind::Deny);
     CHECK_EQ(d.policy, std::string("no"));
-    CHECK_EQ(after_ptr->calls, 0);     // never evaluated: the chain stopped at the Deny
+    CHECK_EQ(after_ptr->calls, 0); // never evaluated: the chain stopped at the Deny
 }
 
 // =========================================================================
@@ -158,26 +268,29 @@ TEST(pol_chain_first_deny_stops_first_ask_wins) {
 
 // Example 7 (graph): post-order load order, and a cycle message that lists
 // only the nodes still on the DFS path (b is already finished).
-TEST(graph_order_and_cycle_message) {
+TEST(graph_order_and_cycle_message)
+{
     DepGraph g;
-    for (const char* n : {"a", "b", "c", "d"}) g.add_node(n);
-    g.add_edge("a", "b");   // a requires b
+    for (const char *n : {"a", "b", "c", "d"})
+        g.add_node(n);
+    g.add_edge("a", "b"); // a requires b
     g.add_edge("a", "c");
     g.add_edge("b", "d");
-    g.add_edge("c", "d");   // diamond: d is reached twice, but it is not a cycle
+    g.add_edge("c", "d"); // diamond: d is reached twice, but it is not a cycle
     std::vector<std::string> order;
     std::string error;
     REQUIRE(g.order_from("a", &order, &error));
     CHECK_EQ(order, (std::vector<std::string>{"d", "b", "c", "a"}));
 
-    g.add_edge("c", "a");   // now a -> c -> a is a cycle
+    g.add_edge("c", "a"); // now a -> c -> a is a cycle
     CHECK(!g.order_from("a", &order, &error));
     CHECK_EQ(error, std::string("cycle: a -> c -> a"));
 }
 
 // Example 8 (index): rank by number of distinct query words; ties go to the
 // smaller doc id.
-TEST(index_ranking_and_ties) {
+TEST(index_ranking_and_ties)
+{
     SkillIndex ix;
     ix.add(0, "format numbers");
     ix.add(1, "csv report with table and numbers");
@@ -193,4 +306,4 @@ TEST(index_ranking_and_ties) {
 // Your tests (at least 12 more). Spec §8 lists what they must cover.
 // =========================================================================
 
-int main(int argc, char** argv) { return mt::run_all(argc, argv); }
+int main(int argc, char **argv) { return mt::run_all(argc, argv); }
