@@ -213,6 +213,91 @@ TEST(heap_topk_timing)
     sorted.resize(10);
     CHECK_EQ(got, sorted);
 }
+
+TEST(lru_refresh_recency)
+{
+    LruCache<std::string, int> c(3);
+
+    c.put("a", 1);
+    c.put("b", 2);
+    c.put("c", 3);
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<std::string>{"c", "b", "a"}));
+    const int *v = c.get("a");
+    REQUIRE(v != nullptr);
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<std::string>{"a", "c", "b"}));
+    CHECK_EQ(*v, 1);
+    c.put("d", 4);
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<std::string>{"d", "a", "c"}));
+    CHECK(c.contains("a"));
+    CHECK(!c.contains("b"));
+    CHECK_EQ(c.stats().evictions, std::size_t{1});
+}
+
+TEST(lru_put_existing_updates)
+{
+    LruCache<std::string, int> c(2);
+    c.put("a", 1);
+    c.put("b", 2);
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<std::string>{"b", "a"}));
+    c.put("a", 10);
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<std::string>{"a", "b"}));
+    CHECK_EQ(c.size(), std::size_t{2});
+    CHECK_EQ(c.stats().evictions, std::size_t{0});
+    const int *v = c.get("a");
+    REQUIRE(v != nullptr);
+    CHECK_EQ(*v, 10);
+    CHECK_EQ(c.stats().hits, std::size_t{1});
+    CHECK_EQ(c.stats().misses, std::size_t{0});
+}
+
+TEST(lru_capacity_0_1)
+{
+    LruCache<int, int> z(0);
+    z.put(1, 100);
+    CHECK_EQ(z.size(), std::size_t{0});
+    CHECK(!z.contains(1));
+    CHECK(z.get(1) == nullptr);
+    CHECK_EQ(z.stats().evictions, std::size_t{0});
+
+    LruCache<int, int> o(1);
+    o.put(1, 10);
+    CHECK_EQ(o.keys_mru_to_lru(), (std::vector<int>{1}));
+    o.put(2, 20);
+    CHECK(!o.contains(1));
+    CHECK_EQ(o.keys_mru_to_lru(), (std::vector<int>{2}));
+    CHECK_EQ(o.stats().evictions, std::size_t{1});
+
+    o.put(2, 25);
+    CHECK_EQ(o.keys_mru_to_lru(), (std::vector<int>{2}));
+    CHECK_EQ(o.stats().evictions, std::size_t{1});
+    const int *v = o.get(2);
+    REQUIRE(v != nullptr);
+    CHECK_EQ(*v, 25);
+}
+
+TEST(lru_erase_head_middle_tail)
+{
+    LruCache<int, int> c(5);
+    c.put(1, 1);
+    c.put(2, 2);
+    c.put(3, 3);
+    c.put(4, 4);
+    c.put(5, 5);
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<int>{5, 4, 3, 2, 1}));
+    CHECK(c.erase(5));
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<int>{4, 3, 2, 1}));
+    CHECK(c.erase(3));
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<int>{4, 2, 1}));
+    CHECK(c.erase(1));
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<int>{4, 2}));
+    CHECK(!c.erase(9));
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<int>{4, 2}));
+    CHECK_EQ(c.size(), std::size_t{2});
+    CHECK_EQ(c.stats().evictions, std::size_t{0});
+    c.put(6, 60);
+    CHECK_EQ(c.keys_mru_to_lru(), (std::vector<int>{6, 4, 2}));
+}
+
 // =========================================================================
 // Policy — 2 examples
 // =========================================================================
