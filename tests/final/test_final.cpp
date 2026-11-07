@@ -380,6 +380,26 @@ TEST(bst_height_seq_shuffle)
     CHECK_EQ(seq.height(), std::size_t{1000});
     CHECK(shuf.height() < 100);
 }
+
+TEST(ctx_protect_over_budget)
+{
+    std::vector<ContextItem> items{
+        {Role::System, 10, false},
+        {Role::Tool, 10, true},
+        {Role::Tool, 10, false},
+        {Role::Assistant, 10, false},
+        {Role::User, 10, false},
+        {Role::Tool, 10, false}};
+    ContextPlan a = select_context(items, 0, 1);
+    CHECK_EQ(a.keep, (std::vector<std::size_t>{0, 1, 5}));
+    CHECK_EQ(a.total_tokens, std::size_t{30});
+    CHECK(a.over_budget);
+
+    ContextPlan b = select_context(items, 30, 1);
+    CHECK_EQ(b.keep, (std::vector<std::size_t>{0, 1, 5}));
+    CHECK_EQ(b.total_tokens, std::size_t{30});
+    CHECK(!b.over_budget);
+}
 // =========================================================================
 // Policy — 2 examples
 // =========================================================================
@@ -427,6 +447,61 @@ TEST(pol_chain_first_deny_stops_first_ask_wins)
     CHECK(d.kind == Decision::Kind::Deny);
     CHECK_EQ(d.policy, std::string("no"));
     CHECK_EQ(after_ptr->calls, 0); // never evaluated: the chain stopped at the Deny
+}
+
+// MY POLICY TESTS
+
+TEST(pol_each_policy)
+{
+
+    AllowlistPolicy allow({"ls", "git"});
+    Decision d = allow.evaluate(CommandRequest{"ls", {}, ""});
+    CHECK(d.kind == Decision::Kind::Allow);
+    CHECK_EQ(d.policy, std::string("allowlist"));
+    CHECK(!d.reason.empty());
+    CHECK(allow.evaluate(CommandRequest{"rm", {}, ""}).kind == Decision::Kind::Deny);
+    CHECK(allow.evaluate(CommandRequest{"gitk", {}, ""}).kind == Decision::Kind::Deny);
+    CHECK(allow.evaluate(CommandRequest{"git", {}, ""}).kind == Decision::Kind::Allow);
+    ArgumentPatternPolicy patt({";", "rm -rf"});
+    d = patt.evaluate(CommandRequest{"cat", {"a;", "rm", "b"}, ""});
+    CHECK(d.kind == Decision::Kind::Deny);
+    CHECK_EQ(d.policy, std::string("patterns"));
+    CHECK(!d.reason.empty());
+    CHECK(patt.evaluate(CommandRequest{"rm", {"-rf", "/"}, ""}).kind == Decision::Kind::Deny);
+    CHECK(patt.evaluate(CommandRequest{"ls", {"-l"}, ""}).kind == Decision::Kind::Allow);
+    ConfirmPolicy conf({"git"});
+    d = conf.evaluate(CommandRequest{"git", {"status"}, ""});
+    CHECK(d.kind == Decision::Kind::Ask);
+    CHECK_EQ(d.policy, std::string("confirm"));
+    CHECK(!d.reason.empty());
+    CHECK(conf.evaluate(CommandRequest{"ls", {}, ""}).kind == Decision::Kind::Allow);
+    ManualClock clock(100);
+    RateLimitPolicy one(1, 10.0, clock);
+    d = one.evaluate(CommandRequest{"ls", {}, ""});
+    CHECK(d.kind == Decision::Kind::Allow);
+    CHECK_EQ(d.policy, std::string("ratelimit"));
+    CHECK(!d.reason.empty());
+    CHECK(one.evaluate(CommandRequest{"ls", {}, ""}).kind == Decision::Kind::Deny);
+    RateLimitPolicy zero(0, 10.0, clock);
+    CHECK(zero.evaluate(CommandRequest{"ls", {}, ""}).kind == Decision::Kind::Deny);
+}
+
+TEST(pol_nested_chain)
+{
+    auto inner = std::make_unique<PolicyChain>();
+    REQUIRE(inner->add(std::make_unique<AllowlistPolicy>(std::vector<std::string>{"ls", "git"})));
+    PolicyChain outer;
+    REQUIRE(outer.add(std::move(inner)));
+    REQUIRE(outer.add(std::make_unique<ConfirmPolicy>(std::vector<std::string>{"git"})));
+    Decision d = outer.evaluate(CommandRequest{"rm", {}, ""});
+    CHECK(d.kind == Decision::Kind::Deny);
+    CHECK_EQ(d.policy, std::string("allowlist"));
+    d = outer.evaluate(CommandRequest{"git", {"status"}, ""});
+    CHECK(d.kind == Decision::Kind::Ask);
+    CHECK_EQ(d.policy, std::string("confirm"));
+    d = outer.evaluate(CommandRequest{"ls", {}, ""});
+    CHECK(d.kind == Decision::Kind::Allow);
+    CHECK_EQ(d.policy, std::string("chain"));
 }
 
 // =========================================================================
