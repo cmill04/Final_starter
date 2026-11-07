@@ -57,6 +57,9 @@ public:
     void clear();
 
 private:
+
+
+
     // ===== YOUR REPRESENTATION GOES HERE =====
     // Suggested: a Node struct holding a MemoryRecord and left/right
     // pointers, a root pointer, and a node count (below), plus helpers that
@@ -80,6 +83,14 @@ private:
         Node*        left = nullptr;
         Node*        right = nullptr;
     };
+
+    static std::size_t height_of(const Node* n);
+
+    static void in_order(const Node* n, const std::function<void(const MemoryRecord&)>& fn);
+
+    static void destroy(Node* n);
+
+    static Node* remove_node(Node* n, std::uint64_t id, bool* removed);
 
     Node*       root_ = nullptr;
     std::size_t count_ = 0;

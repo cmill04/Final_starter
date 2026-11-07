@@ -298,6 +298,88 @@ TEST(lru_erase_head_middle_tail)
     CHECK_EQ(c.keys_mru_to_lru(), (std::vector<int>{6, 4, 2}));
 }
 
+static std::vector<std::uint64_t> in_order_ids(const MemoryIndex &t)
+{
+    std::vector<std::uint64_t> ids;
+    t.for_each_in_order([&](const MemoryRecord &r)
+                        { ids.push_back(r.id); });
+    return ids;
+}
+
+TEST(bst_remove_leaf_1child_root)
+{
+    MemoryIndex t;
+    for (std::uint64_t id : {50, 30, 70, 20, 40, 60})
+        REQUIRE(t.insert(MemoryRecord{id, "m" + std::to_string(id)}));
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{20, 30, 40, 50, 60, 70}));
+    CHECK_EQ(t.size(), std::size_t{6});
+    CHECK(t.remove(20));
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{30, 40, 50, 60, 70}));
+    CHECK_EQ(t.size(), std::size_t{5});
+    CHECK(t.find(20) == nullptr);
+    CHECK(t.remove(70));
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{30, 40, 50, 60}));
+    CHECK_EQ(t.size(), std::size_t{4});
+    CHECK(t.find(70) == nullptr);
+    CHECK(t.remove(50));
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{30, 40, 60}));
+    CHECK_EQ(t.size(), std::size_t{3});
+    CHECK(t.find(50) == nullptr);
+    CHECK(t.remove(60));
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{30, 40}));
+    CHECK_EQ(t.size(), std::size_t{2});
+    CHECK(t.find(60) == nullptr);
+    CHECK(t.remove(30));
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{40}));
+    CHECK_EQ(t.size(), std::size_t{1});
+    CHECK(t.find(30) == nullptr);
+    CHECK(t.remove(40));
+    CHECK(in_order_ids(t).empty());
+    CHECK_EQ(t.size(), std::size_t{0});
+    CHECK(t.find(40) == nullptr);
+    CHECK_EQ(t.height(), std::size_t{0});
+    CHECK(!t.remove(40));
+}
+
+TEST(bst_dup_inorder_height)
+{
+    MemoryIndex t;
+    CHECK(t.height() == 0);
+    CHECK(t.insert(MemoryRecord{50, "m50"}));
+    CHECK(t.height() == 1);
+    CHECK(t.insert(MemoryRecord{30, "m30"}));
+    CHECK(t.insert(MemoryRecord{70, "m70"}));
+    CHECK(t.height() == 2);
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{30, 50, 70}));
+    CHECK(!t.insert(MemoryRecord{30, "30dup"}));
+    const MemoryRecord *r = t.find(30);
+    REQUIRE(r != nullptr);
+    CHECK_EQ(r->text, std::string("m30"));
+    CHECK_EQ(t.size(), std::size_t{3});
+    CHECK_EQ(in_order_ids(t), (std::vector<std::uint64_t>{30, 50, 70}));
+    CHECK(t.height() == 2);
+}
+
+TEST(bst_height_seq_shuffle)
+{
+    MemoryIndex seq;
+    for (std::uint64_t id = 1; id <= 1000; id++)
+        seq.insert(MemoryRecord{id, "m"});
+    std::vector<std::uint64_t> ids;
+    for (std::uint64_t id = 1; id <= 1000; id++)
+        ids.push_back(id);
+    std::mt19937 rng(42);
+    std::shuffle(ids.begin(), ids.end(), rng);
+    MemoryIndex shuf;
+    for (std::uint64_t id : ids)
+        shuf.insert(MemoryRecord{id, "m"});
+    std::printf("BST height, 1000 sequential ids: %zu\n", seq.height());
+    std::printf("BST height, 1000 shuffled ids:   %zu\n", shuf.height());
+    CHECK_EQ(seq.size(), std::size_t{1000});
+    CHECK_EQ(shuf.size(), std::size_t{1000});
+    CHECK_EQ(seq.height(), std::size_t{1000});
+    CHECK(shuf.height() < 100);
+}
 // =========================================================================
 // Policy — 2 examples
 // =========================================================================

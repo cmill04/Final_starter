@@ -2,53 +2,157 @@
 
 #include "memory/memory_index.h"
 
-MemoryIndex::~MemoryIndex() {
-    // TODO: free every node (post-order: both children before the node).
-    (void)root_;
+MemoryIndex::~MemoryIndex()
+{
+    clear();
 }
 
-bool MemoryIndex::insert(MemoryRecord rec) {
-    // TODO: walk down from root_ (smaller ids left, larger right). Equal id:
-    // return false and change nothing. Otherwise attach a new Node where the
-    // walk fell off the tree, ++count_, return true.
-    // Clue: memory ids arrive as 1, 2, 3, ..., so the tree is one long right
-    // spine. A loop handles 5,000 nodes easily; so does recursion.
-    (void)rec;
-    return false;
+bool MemoryIndex::insert(MemoryRecord rec)
+{
+
+    if (!root_)
+    {
+        root_ = new Node{std::move(rec)};
+        ++count_;
+        return true;
+    }
+    Node *cur = root_;
+    while (1)
+    {
+        if (rec.id == cur->rec.id)
+            return false;
+        if (rec.id < cur->rec.id)
+        {
+            if (!cur->left)
+            {
+                cur->left = new Node{std::move(rec)};
+                break;
+            }
+            else
+            {
+                cur = cur->left;
+            }
+        }
+        else
+        {
+            if (!cur->right)
+            {
+                cur->right = new Node{std::move(rec)};
+                break;
+            }
+            else
+            {
+                cur = cur->right;
+            }
+        }
+    }
+    count_++;
+    return true;
 }
 
-const MemoryRecord* MemoryIndex::find(std::uint64_t id) const {
-    // TODO
-    (void)id;
+const MemoryRecord *MemoryIndex::find(std::uint64_t id) const
+{
+     Node *cur = root_;
+     while(cur){
+        if (id == cur->rec.id){
+            return &cur->rec;
+        }
+        if(id < cur->rec.id){
+            cur = cur->left;
+        }
+        else cur = cur->right; 
+     }
     return nullptr;
 }
 
-bool MemoryIndex::remove(std::uint64_t id) {
-    // TODO: leaf, one child, two children (use the in-order successor or
-    // predecessor). Spec Appendix C draws all three.
-    // Clue: the successor (leftmost node of the right subtree) has no left
-    // child but MAY have a right child: that child takes its place.
-    // Clue: --count_ exactly once per successful remove. Counting inside
-    // the helper AND here double-counts the two-children case.
-    // Clue: when the removed node is the root, root_ itself must change.
-    (void)id;
-    return false;
+bool MemoryIndex::remove(std::uint64_t id)
+{
+
+    bool removed = false; 
+    root_ = remove_node(root_, id, &removed);
+    if (removed) count_--;
+    return removed; 
+}
+
+MemoryIndex::Node* MemoryIndex::remove_node(Node* n, std::uint64_t id, bool* removed) {
+   if (!n){
+    return nullptr;
+   }
+   if (id < n->rec.id){
+     n->left = remove_node(n->left, id, removed);
+     return n;
+   }
+   if(id > n->rec.id){
+    n->right = remove_node(n->right, id, removed);
+    return n;
+   }
+   else *removed = true; 
+   if (!n->left){
+    Node* r = n->right;
+   delete n;
+   return r; 
+   }
+   if (!n->right){
+    Node* l = n->left;
+    delete n;
+    return l; 
+   }
+
+   Node* s = n->right;
+   while (s->left){
+    s= s->left;
+   }
+    n->rec = s->rec;
+    n->right = remove_node(n->right, s->rec.id, removed);
+    return n;
 }
 
 std::size_t MemoryIndex::size() const noexcept { return count_; }
 
-std::size_t MemoryIndex::height() const {
-    // TODO: empty tree = 0, one node = 1, otherwise 1 + the taller child.
-    return 0;
+std::size_t MemoryIndex::height() const
+{
+    return height_of(root_);
 }
 
-void MemoryIndex::for_each_in_order(const std::function<void(const MemoryRecord&)>& fn) const {
-    // TODO: left subtree, then fn(node->rec), then right subtree.
-    (void)fn;
+std::size_t MemoryIndex::height_of(const Node* n) {
+    if (!n){
+        return 0;
+    }
+   std::size_t Lheight = height_of(n->left);
+      std::size_t Rheight = height_of(n->right);
+      if (Lheight >= Rheight){
+        return 1 + Lheight;
+      }
+      else return 1 + Rheight; 
+
 }
 
-void MemoryIndex::clear() {
-    // TODO
-    // Clue: after freeing the nodes, set root_ = nullptr and count_ = 0, or
-    // the destructor frees them a second time.
+void MemoryIndex::for_each_in_order(const std::function<void(const MemoryRecord &)> &fn) const
+{
+    in_order(root_, fn);
+}
+
+void MemoryIndex::in_order(const Node* n, const std::function<void(const MemoryRecord&)>& fn) {
+    if (!n){
+        return;
+    }
+    in_order(n->left, fn);
+    fn(n->rec);
+    in_order(n->right, fn);
+}
+
+void MemoryIndex::clear()
+{
+    destroy(root_);
+    root_ = nullptr; 
+    count_ = 0;
+}
+
+void MemoryIndex::destroy(Node* n){
+    if (!n){
+        return;
+    }
+    destroy(n->left);
+    destroy(n->right);
+    delete n;
 }
