@@ -544,6 +544,61 @@ TEST(index_ranking_and_ties)
     CHECK_EQ(*ix.postings("numbers"), (std::vector<std::size_t>{0, 1}));
 }
 
+// MY GRAPH TESTS
+
+TEST(graph_chain_selfloop_cycle_missing)
+{
+    std::vector<std::string> order;
+    std::string error;
+
+    DepGraph chain;
+    for (const char *n : {"a", "b", "c"})
+        chain.add_node(n);
+    chain.add_edge("a", "b");
+    chain.add_edge("b", "c");
+    REQUIRE(chain.order_from("a", &order, &error));
+    CHECK_EQ(order, (std::vector<std::string>{"c", "b", "a"}));
+    DepGraph self;
+    self.add_node("a");
+    self.add_edge("a", "a");
+    CHECK(!self.order_from("a", &order, &error));
+    CHECK_EQ(error, std::string("cycle: a -> a"));
+    DepGraph cyc;
+    cyc.add_node("a");
+    cyc.add_node("b");
+    cyc.add_node("c");
+    cyc.add_edge("a", "b");
+    cyc.add_edge("b", "c");
+    cyc.add_edge("c", "a");
+    CHECK(!cyc.order_from("a", &order, &error));
+    CHECK_EQ(error, std::string("cycle: a -> b -> c -> a"));
+    DepGraph miss;
+    miss.add_node("a");
+    miss.add_node("b");
+    miss.add_edge("a", "b");
+    miss.add_edge("b", "gone");
+    CHECK(!miss.order_from("a", &order, &error));
+    CHECK_EQ(error, std::string("missing: gone (required by b)"));
+}
+
+TEST(graph_dependents_order)
+{
+    DepGraph g;
+    for (const char *n : {"z1", "a1", "a2"})
+        g.add_node(n);
+    g.add_edge("z1", "t");
+    g.add_edge("a1", "t");
+    g.add_edge("a2", "z1");
+    CHECK_EQ(g.dependents("t"), (std::vector<std::string>{"a1", "z1", "a2"}));
+    CHECK(g.dependents("a2").empty());
+    DepGraph cyc;
+    cyc.add_node("x");
+    cyc.add_node("y");
+    cyc.add_edge("x", "y");
+    cyc.add_edge("y", "x");
+    CHECK_EQ(cyc.dependents("x"), (std::vector<std::string>{"y"}));
+}
+
 // =========================================================================
 // Your tests (at least 12 more). Spec §8 lists what they must cover.
 // =========================================================================

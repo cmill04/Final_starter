@@ -65,6 +65,13 @@ public:
     std::vector<std::string> dependents(const std::string& name) const;
 
 private:
+
+bool dfs(const std::string& node,
+         std::unordered_map<std::string, int>& color,
+         std::vector<std::string>& path,
+         std::vector<std::string>* out,
+         std::string* error) const;
+
     // ===== YOUR REPRESENTATION GOES HERE =====
     // A suggested start (change it if you like):
     std::unordered_map<std::string, std::vector<std::string>> requires_;     // node -> requirements
